@@ -120,6 +120,31 @@ public:
         return reply.readInt32();
     }
 
+#ifdef ALLWINNER
+    virtual int  setDisplayProp(int cmd,int param0,int param1,int param2)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(ISurfaceComposer::getInterfaceDescriptor());
+        data.writeInt32(cmd);
+        data.writeInt32(param0);
+        data.writeInt32(param1);
+        data.writeInt32(param2);
+        remote()->transact(BnSurfaceComposer::SET_DISPLAYPROP, data, &reply);
+        return reply.readInt32();
+    }
+    
+    virtual int  getDisplayProp(int cmd,int param0,int param1)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(ISurfaceComposer::getInterfaceDescriptor());
+        data.writeInt32(cmd);
+        data.writeInt32(param0);
+        data.writeInt32(param1);
+        remote()->transact(BnSurfaceComposer::GET_DISPLAYPROP, data, &reply);
+        return reply.readInt32();
+    }
+#endif
+
     virtual status_t turnElectronBeamOff(int32_t mode)
     {
         Parcel data, reply;
@@ -279,6 +304,27 @@ status_t BnSurfaceComposer::onTransact(
             reply->writeStrongBinder(connection->asBinder());
             return NO_ERROR;
         } break;
+#ifdef ALLWINNER
+        case SET_DISPLAYPROP:
+        {
+            CHECK_INTERFACE(ISurfaceComposer, data, reply);
+            int     cmd     = data.readInt32();
+            int     param0  = data.readInt32();
+            int     param1  = data.readInt32();
+            int     param2  = data.readInt32();
+            int res = setDisplayProp(cmd,param0,param1,param2);
+            reply->writeInt32(res);
+        } break;
+        case GET_DISPLAYPROP:
+        {
+            CHECK_INTERFACE(ISurfaceComposer, data, reply);
+            int     cmd     = data.readInt32();
+            int     param0  = data.readInt32();
+            int     param1  = data.readInt32();
+            int res = getDisplayProp(cmd,param0,param1);
+            reply->writeInt32(res);
+        } break;
+#endif
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

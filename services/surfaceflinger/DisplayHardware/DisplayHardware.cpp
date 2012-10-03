@@ -93,6 +93,18 @@ void checkEGLErrors(const char* token)
  *
  */
 
+#ifdef ALLWINNER
+DisplayHardware::DisplayHardware(
+        const sp<SurfaceFlinger>& flinger,
+        uint32_t dpy)
+    : DisplayHardwareBase(flinger, dpy),
+      mFlinger(flinger), mFlags(0), mHwc(0)
+{
+    init(dpy);
+    mDisplayDispatcher  = NULL;
+    mDisplayDispatcher = new DisplayDispatcher();
+}
+#else
 DisplayHardware::DisplayHardware(
         const sp<SurfaceFlinger>& flinger,
         uint32_t dpy)
@@ -101,6 +113,7 @@ DisplayHardware::DisplayHardware(
 {
     init(dpy);
 }
+#endif
 
 DisplayHardware::~DisplayHardware()
 {
@@ -453,6 +466,13 @@ void DisplayHardware::flip(const Region& dirty) const
     
     mPageFlipCount++;
 
+#ifdef ALLWINNER
+    if (mDisplayDispatcher != NULL) 
+    {
+        mDisplayDispatcher->startSwapBuffer();
+    }
+#endif
+
     if (mHwc->initCheck() == NO_ERROR) {
         mHwc->commit();
     } else {
@@ -474,6 +494,28 @@ void DisplayHardware::makeCurrent() const
 {
     eglMakeCurrent(mDisplay, mSurface, mSurface, mContext);
 }
+
+#ifdef ALLWINNER
+int DisplayHardware::setDispProp(int cmd,int param0,int param1,int param2) const
+{
+    if (mDisplayDispatcher != NULL) 
+    {
+        return mDisplayDispatcher->setDispProp(cmd,param0,param1,param2);
+    }
+
+    return  0;
+}
+
+int DisplayHardware::getDispProp(int cmd,int param0,int param1) const 
+{
+    if (mDisplayDispatcher != NULL) 
+    {
+        return mDisplayDispatcher->getDispProp(cmd,param0,param1);
+    }
+    
+    return  0;
+}
+#endif
 
 void DisplayHardware::dump(String8& res) const
 {

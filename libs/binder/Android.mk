@@ -49,11 +49,15 @@ LOCAL_LDLIBS += -lpthread
 LOCAL_MODULE := libbinder
 LOCAL_SHARED_LIBRARIES := liblog libcutils libutils
 
+ifeq ($(TARGET_BOARD_PLATFORM),exDroid)
+        LOCAL_CFLAGS += -DALLWINNER
+endif
+
 ifeq ($(EXYNOS4_ENHANCEMENTS), true)
-LOCAL_SHARED_LIBRARIES += libsecion
-LOCAL_CFLAGS += -DUSE_SAMSUNG_V4L2_ION -DEXYNOS4_ENHANCEMENTS
-sources += MemoryHeapBaseIon.cpp
-LOCAL_C_INCLUDES := $(TARGET_HAL_PATH)/include
+	LOCAL_SHARED_LIBRARIES += libsecion
+	LOCAL_CFLAGS += -DUSE_SAMSUNG_V4L2_ION -DEXYNOS4_ENHANCEMENTS
+	sources += MemoryHeapBaseIon.cpp
+	LOCAL_C_INCLUDES := $(TARGET_HAL_PATH)/include
 endif
 
 LOCAL_SRC_FILES := $(sources)

@@ -17,8 +17,15 @@ LOCAL_SRC_FILES:= \
     SurfaceTextureLayer.cpp                 \
     Transform.cpp                           \
 
+ifeq ($(TARGET_BOARD_PLATFORM),exDroid)
+	LOCAL_CFLAGS += -DALLWINNER
+endif
+
 LOCAL_CFLAGS:= -DLOG_TAG=\"SurfaceFlinger\"
 LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
+ifeq ($(TARGET_BOARD_PLATFORM),exDroid)
+	LOCAL_CFLAGS += -DALLWINNER
+endif
 
 ifeq ($(TARGET_BOARD_PLATFORM), omap4)
 	LOCAL_CFLAGS += -DHAS_CONTEXT_PRIORITY

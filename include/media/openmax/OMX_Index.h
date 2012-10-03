@@ -264,6 +264,14 @@ typedef enum OMX_INDEXTYPE {
        private indexes are not guaranteed unique and therefore should
        only be sent to the appropriate component. */
 
+#ifdef ALLWINNER
+    OMX_IndexParamEnableAndroidBuffers    = 0x7FF00000,
+    OMX_IndexParamGetAndroidNativeBuffer,
+    OMX_IndexParamUseAndroidNativeBuffer,
+    OMX_IndexParamUseAndroidNativeBuffer2,
+    OMX_IndexParamVendorFlushBuffer,
+#endif
+
     OMX_IndexMax = 0x7FFFFFFF
 
 } OMX_INDEXTYPE;

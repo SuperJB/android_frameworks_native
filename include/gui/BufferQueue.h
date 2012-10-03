@@ -24,6 +24,7 @@
 #include <gui/ISurfaceTexture.h>
 
 #include <ui/GraphicBuffer.h>
+#include <ui/Rect.h>
 
 #include <utils/String8.h>
 #include <utils/Vector.h>
@@ -115,6 +116,12 @@ public:
     BufferQueue(  bool allowSynchronousMode = true, int bufferCount = MIN_UNDEQUEUED_BUFFERS);
     virtual ~BufferQueue();
 
+#ifdef ALLWINNER
+    virtual bool     IsHardwareRenderSupport();
+    virtual int      setParameter(uint32_t cmd,uint32_t value);
+    virtual uint32_t getParameter(uint32_t cmd);
+#endif
+
     virtual int query(int what, int* value);
 
     // setBufferCount updates the number of available buffer slots.  After
@@ -198,8 +205,8 @@ public:
            mTimestamp(0),
            mFrameNumber(0),
            mBuf(INVALID_BUFFER_SLOT) {
-           mCrop.makeInvalid();
-         }
+	           mCrop.makeInvalid();
+	         }
         // mGraphicBuffer points to the buffer allocated for this slot or is NULL
         // if no buffer has been allocated.
         sp<GraphicBuffer> mGraphicBuffer;
@@ -222,7 +229,7 @@ public:
 
         // mBuf is the slot index of this buffer
         int mBuf;
-   };
+	};
 
     // The following public functions is the consumer facing interface
 

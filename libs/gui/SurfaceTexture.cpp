@@ -39,6 +39,9 @@
 #include <utils/String8.h>
 #include <utils/Trace.h>
 
+#include <ui/GraphicBuffer.h>
+#include <ui/Rect.h>
+
 #ifdef QCOM_HARDWARE
 #include <gpuformats.h>
 #endif

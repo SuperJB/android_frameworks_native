@@ -33,12 +33,29 @@ class Layer;
 // refactored
 class SurfaceTextureLayer : public BufferQueue
 {
+
+#ifdef ALLWINNER
+	wp<Layer> mLayer;
+	uint32_t mDefaultFormat;
+#endif
 public:
     SurfaceTextureLayer();
     ~SurfaceTextureLayer();
+#ifdef ALLWINNER
+	bool     usehwcomposer;
+	bool     usehwinit;
+	
+    virtual status_t connect(int api, QueueBufferOutput* output);
 
+    virtual status_t disconnect(int api);
+
+    virtual int      setParameter(uint32_t cmd,uint32_t value);
+    virtual uint32_t getParameter(uint32_t cmd);
+ };
+#else
     virtual status_t connect(int api, QueueBufferOutput* output);
 };
+#endif
 
 // ---------------------------------------------------------------------------
 }; // namespace android

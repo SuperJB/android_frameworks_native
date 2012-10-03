@@ -89,6 +89,11 @@ private:
     int dispatchLock(va_list args);
     int dispatchUnlockAndPost(va_list args);
 
+#ifdef ALLWINNER
+    int dispatchSetParameter(va_list args);
+    int dispatchGetParameter(va_list args);
+#endif
+
 protected:
     virtual int cancelBuffer(ANativeWindowBuffer* buffer);
     virtual int dequeueBuffer(ANativeWindowBuffer** buffer);
@@ -103,6 +108,10 @@ protected:
 #endif
 
     virtual int connect(int api);
+#ifdef ALLWINNER
+    virtual int setParameter(uint32_t cmd,uint32_t value);
+    virtual int getParameter(uint32_t cmd);
+#endif
     virtual int disconnect(int api);
     virtual int setBufferCount(int bufferCount);
     virtual int setBuffersDimensions(int w, int h);

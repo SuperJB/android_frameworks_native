@@ -76,6 +76,12 @@ public:
     size_t getNumLayers() const;
     hwc_layer_t* getLayers() const;
 
+#ifdef ALLWINNER
+    int setParameter(uint32_t cmd,uint32_t value);
+
+    uint32_t getParameter(uint32_t cmd);
+#endif
+
     // get number of layers of the given type as updated in prepare().
     // type is HWC_OVERLAY or HWC_FRAMEBUFFER
     size_t getLayerCount(int type) const;

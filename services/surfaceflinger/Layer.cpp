@@ -176,6 +176,16 @@ wp<IBinder> Layer::getSurfaceTextureBinder() const
     return mSurfaceTexture->getBufferQueue()->asBinder();
 }
 
+#ifdef ALLWINNER
+void Layer::setTextureInfo(int w,int h,int format)
+{
+    texture_srcw 	= w;
+    texture_srch 	= h;
+    texture_format 	= format;
+    mCurrentCrop    = Rect(w,h);
+}
+#endif
+
 status_t Layer::setBuffers( uint32_t w, uint32_t h,
                             PixelFormat format, uint32_t flags)
 {
@@ -328,6 +338,10 @@ void Layer::setPerFrameData(hwc_layer_t* hwcl) {
     } else {
         hwcl->handle = buffer->handle;
     }
+#ifdef ALLWINNER
+    hwcl->format = texture_format;
+    ALOGV("hwcl->format = %d\n",texture_format);
+#endif
 }
 
 void Layer::onDraw(const Region& clip) const
@@ -790,6 +804,18 @@ uint32_t Layer::getEffectiveUsage(uint32_t usage) const
     usage |= GraphicBuffer::USAGE_HW_COMPOSER;
     return usage;
 }
+
+#ifdef ALLWINNER
+int Layer::setDisplayParameter(uint32_t cmd,uint32_t  value)
+{
+    return mFlinger->setDisplayParameter(cmd,value);
+}
+
+uint32_t Layer::getDisplayParameter(uint32_t cmd)
+{
+    return mFlinger->getDisplayParameter(cmd);
+}
+#endif
 
 uint32_t Layer::getTransformHint() const {
     uint32_t orientation = 0;

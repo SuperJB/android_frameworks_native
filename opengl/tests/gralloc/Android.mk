@@ -11,6 +11,8 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_MODULE:= test-opengl-gralloc
 
+LOCAL_C_INCLUDES += frameworks/native/include
+
 LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_EXECUTABLE)
