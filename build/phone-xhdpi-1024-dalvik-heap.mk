@@ -14,12 +14,15 @@
 # limitations under the License.
 #
 
-# Provides overrides to configure the Dalvik heap for a standard tablet device.
+# Provides overrides to configure the Dalvik heap for a xhdpi phone
 
 PRODUCT_PROPERTY_OVERRIDES += \
     dalvik.vm.heapstartsize=8m \
-    dalvik.vm.heapgrowthlimit=64m \
-    dalvik.vm.heapsize=256m
+    dalvik.vm.heapgrowthlimit=96m \
+    dalvik.vm.heapsize=256m \
+    dalvik.vm.heaptargetutilization=0.75 \
+    dalvik.vm.heapminfree=512k \
+    dalvik.vm.heapmaxfree=8m
 
 ifeq ($(TARGET_BOARD_PLATFORM),exDroid)
 PRODUCT_PROPERTY_OVERRIDES += \

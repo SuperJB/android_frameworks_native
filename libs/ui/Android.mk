@@ -17,18 +17,21 @@ include $(CLEAR_VARS)
 
 
 LOCAL_SRC_FILES:= \
+	Fence.cpp \
 	FramebufferNativeWindow.cpp \
 	GraphicBuffer.cpp \
 	GraphicBufferAllocator.cpp \
 	GraphicBufferMapper.cpp \
 	PixelFormat.cpp \
 	Rect.cpp \
-	Region.cpp
+	Region.cpp \
+	UiConfig.cpp
 
 LOCAL_SHARED_LIBRARIES := \
 	libcutils \
-	libutils \
-	libhardware
+	libhardware \
+	libsync \
+	libutils
 
 ifeq ($(TARGET_BOARD_PLATFORM),exDroid)
 	LOCAL_CFLAGS += -DALLWINNER

@@ -36,7 +36,7 @@
 #include <gui/Surface.h>
 
 #include "clz.h"
-#include "DisplayHardware/DisplayHardware.h"
+#include "DisplayDevice.h"
 #include "DisplayHardware/HWComposer.h"
 #include "GLExtensions.h"
 #include "Layer.h"
@@ -53,9 +53,8 @@ namespace android {
 
 // ---------------------------------------------------------------------------
 
-Layer::Layer(SurfaceFlinger* flinger,
-        DisplayID display, const sp<Client>& client)
-    :   LayerBaseClient(flinger, display, client),
+Layer::Layer(SurfaceFlinger* flinger, const sp<Client>& client)
+    :   LayerBaseClient(flinger, client),
         mTextureName(-1U),
         mQueuedFrames(0),
         mCurrentTransform(0),
@@ -67,7 +66,6 @@ Layer::Layer(SurfaceFlinger* flinger,
         mFormat(PIXEL_FORMAT_NONE),
         mGLExtensions(GLExtensions::getInstance()),
         mOpaqueLayer(true),
-        mNeedsDithering(false),
         mSecure(false),
         mProtectedByApp(false)
 {
@@ -75,14 +73,11 @@ Layer::Layer(SurfaceFlinger* flinger,
     glGenTextures(1, &mTextureName);
 }
 
-void Layer::onLayerDisplayed() {
-    if (mFrameLatencyNeeded) {
-        const DisplayHardware& hw(graphicPlane(0).displayHardware());
-        mFrameStats[mFrameLatencyOffset].timestamp = mSurfaceTexture->getTimestamp();
-        mFrameStats[mFrameLatencyOffset].set = systemTime();
-        mFrameStats[mFrameLatencyOffset].vsync = hw.getRefreshTimestamp();
-        mFrameLatencyOffset = (mFrameLatencyOffset + 1) % 128;
-        mFrameLatencyNeeded = false;
+void Layer::onLayerDisplayed(const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface* layer) {
+    LayerBaseClient::onLayerDisplayed(hw, layer);
+    if (layer) {
+        mSurfaceTexture->setReleaseFence(layer->getAndResetReleaseFenceFd());
     }
 }
 
@@ -113,16 +108,17 @@ void Layer::onFirstRef()
 
 #ifdef TARGET_DISABLE_TRIPLE_BUFFERING
 #warning "disabling triple buffering"
-    mSurfaceTexture->setBufferCountServer(2);
+    mSurfaceTexture->setDefaultMaxBufferCount(2);
 #else
-    mSurfaceTexture->setBufferCountServer(3);
+    mSurfaceTexture->setDefaultMaxBufferCount(3);
 #endif
+
+    updateTransformHint();
 }
 
 Layer::~Layer()
 {
-    mFlinger->postMessageAsync(
-            new SurfaceFlinger::MessageDestroyGLTexture(mTextureName) );
+    mFlinger->deleteTextureAsync(mTextureName);
 }
 
 void Layer::onFrameQueued() {
@@ -140,14 +136,6 @@ void Layer::onRemoved()
 void Layer::setName(const String8& name) {
     LayerBase::setName(name);
     mSurfaceTexture->setName(name);
-}
-
-void Layer::validateVisibility(const Transform& globalTransform) {
-    LayerBase::validateVisibility(globalTransform);
-
-    // This optimization allows the SurfaceTexture to bake in
-    // the rotation so hardware overlays can be used
-    mSurfaceTexture->setTransformHint(getTransformHint());
 }
 
 sp<ISurface> Layer::createSurface()
@@ -197,10 +185,8 @@ status_t Layer::setBuffers( uint32_t w, uint32_t h,
         return err;
     }
 
-    // the display's pixel format
-    const DisplayHardware& hw(graphicPlane(0).displayHardware());
     uint32_t const maxSurfaceDims = min(
-            hw.getMaxTextureSize(), hw.getMaxViewportDims());
+            mFlinger->getMaxTextureSize(), mFlinger->getMaxViewportDims());
 
     // never allow a surface larger than what our underlying GL implementation
     // can handle.
@@ -209,15 +195,11 @@ status_t Layer::setBuffers( uint32_t w, uint32_t h,
         return BAD_VALUE;
     }
 
-    PixelFormatInfo displayInfo;
-    getPixelFormatInfo(hw.getFormat(), &displayInfo);
-    const uint32_t hwFlags = hw.getFlags();
-    
     mFormat = format;
 
-    mSecure = (flags & ISurfaceComposer::eSecure) ? true : false;
-    mProtectedByApp = (flags & ISurfaceComposer::eProtectedByApp) ? true : false;
-    mOpaqueLayer = (flags & ISurfaceComposer::eOpaque);
+    mSecure = (flags & ISurfaceComposerClient::eSecure) ? true : false;
+    mProtectedByApp = (flags & ISurfaceComposerClient::eProtectedByApp) ? true : false;
+    mOpaqueLayer = (flags & ISurfaceComposerClient::eOpaque);
     mCurrentOpacity = getOpacityForFormat(format);
 
     mSurfaceTexture->setDefaultBufferSize(w, h);
@@ -250,7 +232,8 @@ Rect Layer::computeBufferCrop() const {
     } else  if (mActiveBuffer != NULL){
         crop = Rect(mActiveBuffer->getWidth(), mActiveBuffer->getHeight());
     } else {
-        crop = Rect(mTransformedBounds.width(), mTransformedBounds.height());
+        crop.makeInvalid();
+        return crop;
     }
 
     // ... then reduce that in the same proportions as the window crop reduces
@@ -283,16 +266,23 @@ Rect Layer::computeBufferCrop() const {
     return crop;
 }
 
-void Layer::setGeometry(hwc_layer_t* hwcl)
+void Layer::setGeometry(
+    const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface& layer)
 {
-    LayerBaseClient::setGeometry(hwcl);
+    LayerBaseClient::setGeometry(hw, layer);
 
-    hwcl->flags &= ~HWC_SKIP_LAYER;
+    // enable this layer
+    layer.setSkip(false);
 
     // we can't do alpha-fade with the hwc HAL
     const State& s(drawingState());
     if (s.alpha < 0xFF) {
-        hwcl->flags = HWC_SKIP_LAYER;
+        layer.setSkip(true);
+    }
+
+    if (isSecure() && !hw->isSecure()) {
+        layer.setSkip(true);
     }
 
     /*
@@ -300,7 +290,6 @@ void Layer::setGeometry(hwc_layer_t* hwcl)
      * 1) buffer orientation/flip/mirror
      * 2) state transformation (window manager)
      * 3) layer orientation (screen orientation)
-     * mTransform is already the composition of (2) and (3)
      * (NOTE: the matrices are multiplied in reverse order)
      */
 
@@ -308,43 +297,53 @@ void Layer::setGeometry(hwc_layer_t* hwcl)
 #ifdef QCOM_HARDWARE
     hwcl->sourceTransform = bufferOrientation.getOrientation();
 #endif
-    const Transform tr(mTransform * bufferOrientation);
+    const Transform tr(hw->getTransform() * s.transform * bufferOrientation);
 
     // this gives us only the "orientation" component of the transform
     const uint32_t finalTransform = tr.getOrientation();
 
     // we can only handle simple transformation
     if (finalTransform & Transform::ROT_INVALID) {
-        hwcl->flags = HWC_SKIP_LAYER;
+        layer.setSkip(true);
     } else {
-        hwcl->transform = finalTransform;
+        layer.setTransform(finalTransform);
     }
-
-    Rect crop = computeBufferCrop();
-    hwcl->sourceCrop.left   = crop.left;
-    hwcl->sourceCrop.top    = crop.top;
-    hwcl->sourceCrop.right  = crop.right;
-    hwcl->sourceCrop.bottom = crop.bottom;
+    layer.setCrop(computeBufferCrop());
 }
 
-void Layer::setPerFrameData(hwc_layer_t* hwcl) {
-    const sp<GraphicBuffer>& buffer(mActiveBuffer);
-    if (buffer == NULL) {
-        // this can happen if the client never drew into this layer yet,
-        // or if we ran out of memory. In that case, don't let
-        // HWC handle it.
-        hwcl->flags |= HWC_SKIP_LAYER;
-        hwcl->handle = NULL;
-    } else {
-        hwcl->handle = buffer->handle;
+void Layer::setPerFrameData(const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface& layer) {
+    LayerBaseClient::setPerFrameData(hw, layer);
+    // NOTE: buffer can be NULL if the client never drew into this
+    // layer yet, or if we ran out of memory
+    layer.setBuffer(mActiveBuffer);
+}
+
+void Layer::setAcquireFence(const sp<const DisplayDevice>& hw,
+        HWComposer::HWCLayerInterface& layer) {
+    int fenceFd = -1;
+
+    // TODO: there is a possible optimization here: we only need to set the
+    // acquire fence the first time a new buffer is acquired on EACH display.
+
+    if (layer.getCompositionType() == HWC_OVERLAY) {
+        sp<Fence> fence = mSurfaceTexture->getCurrentFence();
+        if (fence.get()) {
+            fenceFd = fence->dup();
+            if (fenceFd == -1) {
+                ALOGW("failed to dup layer fence, skipping sync: %d", errno);
+            }
+        }
     }
+
 #ifdef ALLWINNER
     hwcl->format = texture_format;
     ALOGV("hwcl->format = %d\n",texture_format);
 #endif
+    layer.setAcquireFenceFd(fenceFd);
 }
 
-void Layer::onDraw(const Region& clip) const
+void Layer::onDraw(const sp<const DisplayDevice>& hw, const Region& clip) const
 {
     ATRACE_CALL();
 
@@ -366,12 +365,12 @@ void Layer::onDraw(const Region& clip) const
             const sp<LayerBase>& layer(drawingLayers[i]);
             if (layer.get() == static_cast<LayerBase const*>(this))
                 break;
-            under.orSelf(layer->visibleRegionScreen);
+            under.orSelf( hw->getTransform().transform(layer->visibleRegion) );
         }
         // if not everything below us is covered, we plug the holes!
         Region holes(clip.subtract(under));
         if (!holes.isEmpty()) {
-            clearWithOpenGL(holes, 0, 0, 0, 1);
+            clearWithOpenGL(hw, holes, 0, 0, 0, 1);
         }
         return;
     }
@@ -381,9 +380,19 @@ void Layer::onDraw(const Region& clip) const
         return;
     }
 #endif
-    if (!isProtected()) {
+
+    status_t err = mSurfaceTexture->doGLFenceWait();
+    if (err != OK) {
+        ALOGE("onDraw: failed waiting for fence: %d", err);
+        // Go ahead and draw the buffer anyway; no matter what we do the screen
+        // is probably going to have something visibly wrong.
+    }
+
+    bool blackOutLayer = isProtected() || (isSecure() && !hw->isSecure());
+
+    if (!blackOutLayer) {
         // TODO: we could be more subtle with isFixedSize()
-        const bool useFiltering = getFiltering() || needsFiltering() || isFixedSize();
+        const bool useFiltering = getFiltering() || needsFiltering(hw) || isFixedSize();
 
         // Query the texture matrix given our current filtering mode.
         float textureMatrix[16];
@@ -412,7 +421,7 @@ void Layer::onDraw(const Region& clip) const
         glEnable(GL_TEXTURE_2D);
     }
 
-    drawWithOpenGL(clip);
+    drawWithOpenGL(hw, clip);
 
     glDisable(GL_TEXTURE_EXTERNAL_OES);
     glDisable(GL_TEXTURE_2D);
@@ -470,12 +479,12 @@ uint32_t Layer::doTransaction(uint32_t flags)
     if (sizeChanged) {
         // the size changed, we need to ask our client to request a new buffer
         ALOGD_IF(DEBUG_RESIZE,
-                "doTransaction: geometry (layer=%p), scalingMode=%d\n"
+                "doTransaction: geometry (layer=%p '%s'), tr=%02x, scalingMode=%d\n"
                 "  current={ active   ={ wh={%4u,%4u} crop={%4d,%4d,%4d,%4d} (%4d,%4d) }\n"
                 "            requested={ wh={%4u,%4u} crop={%4d,%4d,%4d,%4d} (%4d,%4d) }}\n"
                 "  drawing={ active   ={ wh={%4u,%4u} crop={%4d,%4d,%4d,%4d} (%4d,%4d) }\n"
                 "            requested={ wh={%4u,%4u} crop={%4d,%4d,%4d,%4d} (%4d,%4d) }}\n",
-                this, mCurrentScalingMode,
+                this, (const char*) getName(), mCurrentTransform, mCurrentScalingMode,
                 temp.active.w, temp.active.h,
                 temp.active.crop.left,
                 temp.active.crop.top,
@@ -550,10 +559,27 @@ bool Layer::onPreComposition() {
     return mQueuedFrames > 0;
 }
 
-void Layer::lockPageFlip(bool& recomputeVisibleRegions)
+void Layer::onPostComposition() {
+    if (mFrameLatencyNeeded) {
+        const HWComposer& hwc = mFlinger->getHwComposer();
+        const size_t offset = mFrameLatencyOffset;
+        mFrameStats[offset].timestamp = mSurfaceTexture->getTimestamp();
+        mFrameStats[offset].set = systemTime();
+        mFrameStats[offset].vsync = hwc.getRefreshTimestamp(HWC_DISPLAY_PRIMARY);
+        mFrameLatencyOffset = (mFrameLatencyOffset + 1) % 128;
+        mFrameLatencyNeeded = false;
+    }
+}
+
+bool Layer::isVisible() const {
+    return LayerBaseClient::isVisible() && (mActiveBuffer != NULL);
+}
+
+Region Layer::latchBuffer(bool& recomputeVisibleRegions)
 {
     ATRACE_CALL();
 
+    Region outDirtyRegion;
     if (mQueuedFrames > 0) {
 
         // if we've already called updateTexImage() without going through
@@ -562,8 +588,7 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
         // compositionComplete() call.
         // we'll trigger an update in onPreComposition().
         if (mRefreshPending) {
-            mPostedDirtyRegion.clear();
-            return;
+            return outDirtyRegion;
         }
 
         // Capture the old state of the layer for comparisons later
@@ -626,10 +651,10 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
                     }
 
                     ALOGD_IF(DEBUG_RESIZE,
-                            "lockPageFlip: (layer=%p), buffer (%ux%u, tr=%02x), scalingMode=%d\n"
+                            "latchBuffer/reject: buffer (%ux%u, tr=%02x), scalingMode=%d\n"
                             "  drawing={ active   ={ wh={%4u,%4u} crop={%4d,%4d,%4d,%4d} (%4d,%4d) }\n"
                             "            requested={ wh={%4u,%4u} crop={%4d,%4d,%4d,%4d} (%4d,%4d) }}\n",
-                            this, bufWidth, bufHeight, item.mTransform, item.mScalingMode,
+                            bufWidth, bufHeight, item.mTransform, item.mScalingMode,
                             front.active.w, front.active.h,
                             front.active.crop.left,
                             front.active.crop.top,
@@ -660,17 +685,17 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
 
         Reject r(mDrawingState, currentState(), recomputeVisibleRegions);
 
-        if (mSurfaceTexture->updateTexImage(&r) < NO_ERROR) {
+        if (mSurfaceTexture->updateTexImage(&r, true) < NO_ERROR) {
             // something happened!
             recomputeVisibleRegions = true;
-            return;
+            return outDirtyRegion;
         }
 
         // update the active buffer
         mActiveBuffer = mSurfaceTexture->getCurrentBuffer();
         if (mActiveBuffer == NULL) {
             // this can only happen if the very first buffer was rejected.
-            return;
+            return outDirtyRegion;
         }
 
         mRefreshPending = true;
@@ -678,7 +703,7 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
         if (oldActiveBuffer == NULL) {
              // the first time we receive a buffer, we need to trigger a
              // geometry invalidation.
-             mFlinger->invalidateHwcGeometry();
+            recomputeVisibleRegions = true;
          }
 
         Rect crop(mSurfaceTexture->getCurrentCrop());
@@ -691,7 +716,7 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
             mCurrentCrop = crop;
             mCurrentTransform = transform;
             mCurrentScalingMode = scalingMode;
-            mFlinger->invalidateHwcGeometry();
+            recomputeVisibleRegions = true;
         }
 
         if (oldActiveBuffer != NULL) {
@@ -699,7 +724,7 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
             uint32_t bufHeight = mActiveBuffer->getHeight();
             if (bufWidth != uint32_t(oldActiveBuffer->width) ||
                 bufHeight != uint32_t(oldActiveBuffer->height)) {
-                mFlinger->invalidateHwcGeometry();
+                recomputeVisibleRegions = true;
             }
         }
 
@@ -708,38 +733,17 @@ void Layer::lockPageFlip(bool& recomputeVisibleRegions)
             recomputeVisibleRegions = true;
         }
 
-        // FIXME: mPostedDirtyRegion = dirty & bounds
-        const Layer::State& front(drawingState());
-        mPostedDirtyRegion.set(front.active.w, front.active.h);
-
         glTexParameterx(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameterx(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        // FIXME: postedRegion should be dirty & bounds
+        const Layer::State& front(drawingState());
+        Region dirtyRegion(Rect(front.active.w, front.active.h));
+
+        // transform the dirty region to window-manager space
+        outDirtyRegion = (front.transform.transform(dirtyRegion));
     }
-}
-
-void Layer::unlockPageFlip(
-        const Transform& planeTransform, Region& outDirtyRegion)
-{
-    ATRACE_CALL();
-
-    Region postedRegion(mPostedDirtyRegion);
-    if (!postedRegion.isEmpty()) {
-        mPostedDirtyRegion.clear();
-        if (!visibleRegionScreen.isEmpty()) {
-            // The dirty region is given in the layer's coordinate space
-            // transform the dirty region by the surface's transformation
-            // and the global transformation.
-            const Layer::State& s(drawingState());
-            const Transform tr(planeTransform * s.transform);
-            postedRegion = tr.transform(postedRegion);
-
-            // At this point, the dirty region is in screen space.
-            // Make sure it's constrained by the visible region (which
-            // is in screen space as well).
-            postedRegion.andSelf(visibleRegionScreen);
-            outDirtyRegion.orSelf(postedRegion);
-        }
-    }
+    return outDirtyRegion;
 }
 
 void Layer::dump(String8& result, char* buffer, size_t SIZE) const
@@ -757,9 +761,9 @@ void Layer::dump(String8& result, char* buffer, size_t SIZE) const
     snprintf(buffer, SIZE,
             "      "
             "format=%2d, activeBuffer=[%4ux%4u:%4u,%3X],"
-            " transform-hint=0x%02x, queued-frames=%d, mRefreshPending=%d\n",
+            " queued-frames=%d, mRefreshPending=%d\n",
             mFormat, w0, h0, s0,f0,
-            getTransformHint(), mQueuedFrames, mRefreshPending);
+            mQueuedFrames, mRefreshPending);
 
     result.append(buffer);
 
@@ -772,8 +776,8 @@ void Layer::dumpStats(String8& result, char* buffer, size_t SIZE) const
 {
     LayerBaseClient::dumpStats(result, buffer, SIZE);
     const size_t o = mFrameLatencyOffset;
-    const DisplayHardware& hw(graphicPlane(0).displayHardware());
-    const nsecs_t period = hw.getRefreshPeriod();
+    const nsecs_t period =
+            mFlinger->getHwComposer().getRefreshPeriod(HWC_DISPLAY_PRIMARY);
     result.appendFormat("%lld\n", period);
     for (size_t i=0 ; i<128 ; i++) {
         const size_t index = (o+i) % 128;
@@ -817,15 +821,22 @@ uint32_t Layer::getDisplayParameter(uint32_t cmd)
 }
 #endif
 
-uint32_t Layer::getTransformHint() const {
+void Layer::updateTransformHint() const {
     uint32_t orientation = 0;
     if (!mFlinger->mDebugDisableTransformHint) {
-        orientation = getPlaneOrientation();
+        // The transform hint is used to improve performance on the main
+        // display -- we can only have a single transform hint, it cannot
+        // apply to all displays.
+        // This is why we use the default display here. This is not an
+        // oversight.
+        sp<const DisplayDevice> hw(mFlinger->getDefaultDisplayDevice());
+        const Transform& planeTransform(hw->getTransform());
+        orientation = planeTransform.getOrientation();
         if (orientation & Transform::ROT_INVALID) {
             orientation = 0;
         }
     }
-    return orientation;
+    mSurfaceTexture->setTransformHint(orientation);
 }
 
 // ---------------------------------------------------------------------------
