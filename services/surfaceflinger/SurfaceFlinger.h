@@ -90,6 +90,7 @@ public:
     }
 
     SurfaceFlinger();
+    void init();
 
     enum {
         EVENT_VSYNC = HWC_EVENT_VSYNC

@@ -206,21 +206,6 @@ status_t Layer::setBuffers( uint32_t w, uint32_t h,
     mSurfaceTexture->setDefaultBufferFormat(format);
     mSurfaceTexture->setConsumerUsageBits(getEffectiveUsage(0));
 
-    int useDither = mFlinger->getUseDithering();
-    if (useDither) {
-        if (useDither == 2) {
-            mNeedsDithering = true;
-        }
-        else {
-            // we use the red index
-            int displayRedSize = displayInfo.getSize(PixelFormatInfo::INDEX_RED);
-            int layerRedsize = info.getSize(PixelFormatInfo::INDEX_RED);
-            mNeedsDithering = (layerRedsize > displayRedSize);
-        }
-    } else {
-        mNeedsDithering = false;
-    }
-
     return NO_ERROR;
 }
 
@@ -294,9 +279,6 @@ void Layer::setGeometry(
      */
 
     const Transform bufferOrientation(mCurrentTransform);
-#ifdef QCOM_HARDWARE
-    hwcl->sourceTransform = bufferOrientation.getOrientation();
-#endif
     const Transform tr(hw->getTransform() * s.transform * bufferOrientation);
 
     // this gives us only the "orientation" component of the transform
@@ -337,7 +319,7 @@ void Layer::setAcquireFence(const sp<const DisplayDevice>& hw,
     }
 
 #ifdef ALLWINNER
-    hwcl->format = texture_format;
+    hw->format = texture_format;
     ALOGV("hwcl->format = %d\n",texture_format);
 #endif
     layer.setAcquireFenceFd(fenceFd);
@@ -374,12 +356,6 @@ void Layer::onDraw(const sp<const DisplayDevice>& hw, const Region& clip) const
         }
         return;
     }
-#ifdef QCOM_HARDWARE
-    if (!qdutils::isGPUSupportedFormat(mActiveBuffer->format)) {
-        clearWithOpenGL(clip, 0, 0, 0, 1);
-        return;
-    }
-#endif
 
     status_t err = mSurfaceTexture->doGLFenceWait();
     if (err != OK) {

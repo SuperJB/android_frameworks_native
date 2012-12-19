@@ -19,6 +19,9 @@ LOCAL_SRC_FILES:= \
     SurfaceTextureLayer.cpp                 \
     Transform.cpp                           \
 
+ifeq ($(TARGET_BOARD_PLATFORM),exDroid)
+	LOCAL_CFLAGS += -DALLWINNER
+endif
 
 LOCAL_CFLAGS := -DLOG_TAG=\"SurfaceFlinger\"
 LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
@@ -60,8 +63,8 @@ LOCAL_SHARED_LIBRARIES := \
 	libgui
 
 ifeq ($(BOARD_USES_QCOM_HARDWARE), true)
-    LOCAL_C_INCLUDES += hardware/qcom/display/libgralloc
-    LOCAL_C_INCLUDES += hardware/qcom/display/libqdutils
+    LOCAL_C_INCLUDES += hardware/qcom/display-legacy/libgralloc
+    LOCAL_C_INCLUDES += hardware/qcom/display-legacy/libqdutils
     LOCAL_SHARED_LIBRARIES += libqdutils
     LOCAL_CFLAGS += -DQCOM_HARDWARE
 endif

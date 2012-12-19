@@ -108,9 +108,7 @@ SurfaceFlinger::SurfaceFlinger()
         mLastSwapBufferTime(0),
         mDebugInTransaction(0),
         mLastTransactionTime(0),
-        mBootFinished(false),
-        mSecureFrameBuffer(0),
-        mUseDithering(0)
+        mBootFinished(false)
 {
     init();
 #ifdef BOARD_USES_SAMSUNG_HDMI
@@ -151,14 +149,9 @@ void SurfaceFlinger::init()
             mDebugDDMS = 0;
         }
     }
-#endif
-
-    property_get("persist.sys.use_dithering", value, "1");
-    mUseDithering = atoi(value);
 
     ALOGI_IF(mDebugRegion,       "showupdates enabled");
     ALOGI_IF(mDebugDDMS,         "DDMS debugging enabled");
-    ALOGI_IF(mUseDithering,      "use dithering");
 }
 
 void SurfaceFlinger::onFirstRef()
@@ -465,12 +458,7 @@ void SurfaceFlinger::initializeGL(EGLDisplay display) {
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glEnableClientState(GL_VERTEX_ARRAY);
     glShadeModel(GL_FLAT);
-    if (mUseDithering == 0 || mUseDithering == 1) {
-        glDisable(GL_DITHER);
-    }
-    else if (mUseDithering == 2) {
-        glEnable(GL_DITHER);
-    }
+    glDisable(GL_DITHER);
     glDisable(GL_CULL_FACE);
 
     struct pack565 {
@@ -1498,31 +1486,6 @@ uint32_t SurfaceFlinger::getDisplayParameter(uint32_t cmd)
 }
 #endif
 
-bool SurfaceFlinger::lockPageFlip(const LayerVector& currentLayers)
-{
-    bool recomputeVisibleRegions = false;
-    size_t count = currentLayers.size();
-    sp<LayerBase> const* layers = currentLayers.array();
-    for (size_t i=0 ; i<count ; i++) {
-        const sp<LayerBase>& layer(layers[i]);
-        layer->lockPageFlip(recomputeVisibleRegions);
-    }
-    return recomputeVisibleRegions;
-}
-
-void SurfaceFlinger::unlockPageFlip(const LayerVector& currentLayers)
-{
-    const GraphicPlane& plane(graphicPlane(0));
-    const Transform& planeTransform(plane.transform());
-    const size_t count = currentLayers.size();
-    sp<LayerBase> const* layers = currentLayers.array();
-    for (size_t i=0 ; i<count ; i++) {
-        const sp<LayerBase>& layer(layers[i]);
-        layer->unlockPageFlip(planeTransform, mDirtyRegion);
-    }
-}
-
-
 void SurfaceFlinger::doDisplayComposition(const sp<const DisplayDevice>& hw,
         const Region& inDirtyRegion)
 {
@@ -1583,26 +1546,13 @@ void SurfaceFlinger::doComposeSurfaces(const sp<const DisplayDevice>& hw, const 
             // remove where there are opaque FB layers. however, on some
             // GPUs doing a "clean slate" glClear might be more efficient.
             // We'll revisit later if needed.
-             const Region region(hw.bounds());
-#ifdef QCOM_HARDWARE
-             if (0 != qdutils::CBUtils::qcomuiClearRegion(region,
-                                              hw.getEGLDisplay()))
-             {
-#endif
-                 glClearColor(0, 0, 0, 0);
-                 glClear(GL_COLOR_BUFFER_BIT);
-#ifdef QCOM_HARDWARE
-             }
-#endif
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
         } else {
             const Region region(hw->undefinedRegion.intersect(dirty));
             // screen is already cleared here
             if (!region.isEmpty()) {
                 // can happen with SurfaceView
-#ifdef QCOM_HARDWARE
-                if (0 != qdutils::CBUtils::qcomuiClearRegion(mWormholeRegion,
-                                            hw.getEGLDisplay()))
-#endif
                 drawWormhole(hw, region);
             }
         }
@@ -2940,11 +2890,6 @@ int SurfaceFlinger::LayerVector::do_compare(const void* lhs,
     return l->sequence - r->sequence;
 }
 
-#ifdef QCOM_HARDWARE
-void GraphicBufferAlloc::setGraphicBufferSize(int size) {
-    mBufferSize = size;
-}
-#endif
 // ---------------------------------------------------------------------------
 
 SurfaceFlinger::DisplayDeviceState::DisplayDeviceState()
