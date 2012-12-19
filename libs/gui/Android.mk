@@ -67,12 +67,6 @@ ifeq ($(TARGET_BOARD_PLATFORM),exDroid)
 	LOCAL_CFLAGS += -DALLWINNER
 endif
 
-ifeq ($(BOARD_USES_QCOM_HARDWARE), true)
-    LOCAL_C_INCLUDES += hardware/qcom/display/libgralloc
-    LOCAL_C_INCLUDES += hardware/qcom/display/libqdutils
-    LOCAL_CFLAGS += -DQCOM_HARDWARE
-endif
-
 include $(BUILD_SHARED_LIBRARY)
 
 ifeq (,$(ONE_SHOT_MAKEFILE))

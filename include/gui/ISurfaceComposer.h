@@ -54,11 +54,6 @@ public:
         eDisplayIdHdmi = 1
     };
 
-   enum {
-        eElectronBeamAnimationOn  = 0x01,
-        eElectronBeamAnimationOff = 0x10
-    };
-
     /* create connection with surface flinger, requires
      * ACCESS_SURFACE_FLINGER permission
      */
@@ -115,11 +110,6 @@ public:
      * intended to be used to get information about built-in displays */
     virtual status_t getDisplayInfo(const sp<IBinder>& display, DisplayInfo* info) = 0;
 
-    /* triggers screen off animation */
-    virtual status_t turnElectronBeamOff(int32_t mode) = 0;
-
-    /* triggers screen on animation */
-    virtual status_t turnElectronBeamOn(int32_t mode) = 0;
 
 #ifdef ALLWINNER
     virtual int      setDisplayProp(int cmd,int param0,int param1,int param2) = 0;
@@ -142,8 +132,6 @@ public:
         CREATE_DISPLAY,
         GET_BUILT_IN_DISPLAY,
         SET_TRANSACTION_STATE,
-        TURN_ELECTRON_BEAM_OFF,
-        TURN_ELECTRON_BEAM_ON,
         AUTHENTICATE_SURFACE,
         CAPTURE_SCREEN,
         BLANK,

@@ -25,7 +25,6 @@
 
 #include <ui/Fence.h>
 #include <ui/GraphicBuffer.h>
-#include <ui/Rect.h>
 
 #include <utils/String8.h>
 #include <utils/Vector.h>
@@ -33,22 +32,6 @@
 
 namespace android {
 // ----------------------------------------------------------------------------
-
-#ifdef QCOM_HARDWARE
-/*
- * Structure to hold the buffer geometry
- */
-struct qBufGeometry {
-    int width;
-    int height;
-    int format;
-    void set(int w, int h, int f) {
-        width = w;
-        height = h;
-        format = f;
-    }
-};
-#endif
 
 class BufferQueue : public BnSurfaceTexture {
 public:
@@ -170,19 +153,6 @@ public:
     // queued buffers will be retired in order.
     // The default mode is asynchronous.
     virtual status_t setSynchronousMode(bool enabled);
-
-#ifdef QCOM_HARDWARE
-    // setBufferSize enables to specify the user defined size of the buffer
-    // that needs to be allocated by surfaceflinger for its client. This is used
-    // for interlaced use cases where the user can pass extra information about
-    // the type of the frame whether it is interlaced or progressive frame.
-    virtual status_t setBuffersSize(int size);
-
-    // update buffer width, height and format for a native buffer
-    // dynamically from the client which will take effect in the next
-    // queue buffer.
-    virtual status_t updateBuffersGeometry(int w, int h, int f);
-#endif
 
     // connect attempts to connect a producer client API to the BufferQueue.
     // This must be called before any other ISurfaceTexture methods are called
@@ -573,11 +543,8 @@ private:
 
     // mTransformHint is used to optimize for screen rotations
     uint32_t mTransformHint;
-
-#ifdef QCOM_HARDWARE
-    qBufGeometry mNextBufferInfo;
-#endif
 };
+
 // ----------------------------------------------------------------------------
 }; // namespace android
 

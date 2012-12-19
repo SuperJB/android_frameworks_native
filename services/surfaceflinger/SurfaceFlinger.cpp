@@ -2940,11 +2940,6 @@ int SurfaceFlinger::LayerVector::do_compare(const void* lhs,
     return l->sequence - r->sequence;
 }
 
-#ifdef QCOM_HARDWARE
-void GraphicBufferAlloc::setGraphicBufferSize(int size) {
-    mBufferSize = size;
-}
-#endif
 // ---------------------------------------------------------------------------
 
 SurfaceFlinger::DisplayDeviceState::DisplayDeviceState()
